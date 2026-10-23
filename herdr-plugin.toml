@@ -1,0 +1,67 @@
+id = "herdr-taskr"
+name = "taskr"
+version = "0.2.0"
+min_herdr_version = "0.9.0"
+description = "Interactive project task launcher (Just, Make, Taskfile, npm/pnpm/yarn/bun, Cargo) with async split, tab, background, and agent execution"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["sh", "install.sh"]
+
+[[startup]]
+command = ["sh", "install.sh"]
+
+[[actions]]
+id = "launch"
+title = "Run project task…"
+description = "Pick a project task (Just, Make, Taskfile, npm, Cargo) in fzf and run it asynchronously"
+contexts = ["pane", "tab", "workspace", "global"]
+command = ["bin/herdr-taskr", "open-picker"]
+
+[[actions]]
+id = "rerun"
+title = "Re-run last project task"
+description = "Re-run the last executed project task for the current project"
+contexts = ["pane", "tab", "workspace", "global"]
+command = ["bin/herdr-taskr", "rerun"]
+
+[[actions]]
+id = "send-to-agent"
+title = "Send last task output to agent"
+description = "Paste the latest task output into the workspace agent pane and focus it"
+contexts = ["pane", "tab", "workspace", "global"]
+command = ["bin/herdr-taskr", "send-to-agent"]
+
+[[actions]]
+id = "logs"
+title = "Show last background task log"
+description = "Open the latest background task run output in a popup"
+contexts = ["pane", "tab", "workspace", "global"]
+command = ["bin/herdr-taskr", "open-logs"]
+
+[[panes]]
+id = "picker"
+title = "taskr"
+description = "Interactive project task picker"
+placement = "popup"
+width = 104
+height = 28
+command = ["bin/herdr-taskr", "picker"]
+
+[[panes]]
+id = "logs"
+title = "taskr logs"
+description = "Last background task output"
+placement = "popup"
+width = "80%"
+height = "70%"
+command = ["bin/herdr-taskr", "logs-pane"]
+
+[[panes]]
+id = "send-agent"
+title = "send task output to agent"
+description = "Pick workspace agent to receive task output"
+placement = "popup"
+width = 64
+height = 16
+command = ["bin/herdr-taskr", "send-to-agent", "--interactive"]

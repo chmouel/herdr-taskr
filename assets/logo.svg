@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="herdr-taskr logo">
+  <rect width="512" height="512" rx="112" fill="#1B1F3B"/>
+  <rect x="64" y="84" width="384" height="344" rx="36" fill="#262B52" stroke="#DCE3F0" stroke-width="20"/>
+  <line x1="272" y1="84" x2="272" y2="428" stroke="#DCE3F0" stroke-width="16" stroke-opacity="0.35"/>
+  <path d="M108 164 L144 190 L108 216" fill="none" stroke="#8BD17C" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="168" y="179" width="76" height="22" rx="8" fill="#8BD17C"/>
+  <rect x="108" y="252" width="124" height="20" rx="8" fill="#F5B841" opacity="0.9"/>
+  <rect x="108" y="314" width="96" height="20" rx="8" fill="#F07FA8" opacity="0.9"/>
+  <rect x="304" y="156" width="108" height="18" rx="7" fill="#DCE3F0" opacity="0.85"/>
+  <rect x="304" y="202" width="84" height="16" rx="7" fill="#DCE3F0" opacity="0.5"/>
+  <rect x="304" y="244" width="96" height="16" rx="7" fill="#DCE3F0" opacity="0.5"/>
+  <path d="M342 308 L398 340 L342 372 Z" fill="#8BD17C"/>
+</svg>
