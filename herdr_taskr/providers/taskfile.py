@@ -6,7 +6,7 @@ import re
 import shlex
 from pathlib import Path
 
-from ..models import TaskItem
+from ..models import TaskItem, find_first_file
 
 TASKFILE_NAMES = (
     "Taskfile.yml",
@@ -21,11 +21,7 @@ TASK_KEY_RE = re.compile(r"^([A-Za-z0-9_.:/\-]+)\s*:\s*(.*)$")
 
 
 def find_taskfile_in_dir(directory: Path) -> Path | None:
-    for name in TASKFILE_NAMES:
-        candidate = directory / name
-        if candidate.is_file():
-            return candidate
-    return None
+    return find_first_file(directory, TASKFILE_NAMES)
 
 
 def _unquote_yaml_scalar(raw: str) -> str:

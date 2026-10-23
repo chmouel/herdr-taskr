@@ -6,7 +6,7 @@ import re
 import shlex
 from pathlib import Path
 
-from ..models import TaskItem
+from ..models import TaskItem, find_first_file
 
 JUSTFILE_NAMES = ("Justfile", "justfile", ".justfile")
 
@@ -17,11 +17,7 @@ RESERVED_KEYWORDS = {"alias", "export", "import", "mod", "set"}
 
 
 def find_justfile_in_dir(directory: Path) -> Path | None:
-    for name in JUSTFILE_NAMES:
-        candidate = directory / name
-        if candidate.is_file():
-            return candidate
-    return None
+    return find_first_file(directory, JUSTFILE_NAMES)
 
 
 def just_command_for(justfile: Path, recipe_name: str) -> tuple[str, list[str]]:

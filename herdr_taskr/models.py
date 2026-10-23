@@ -2,8 +2,26 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+def find_first_file(directory: Path, names: tuple[str, ...]) -> Path | None:
+    """Return the first of names present in directory, matching names exactly.
+
+    Uses the directory listing so case-insensitive filesystems (macOS) do not
+    report "makefile" when only "Makefile" exists.
+    """
+    try:
+        entries = set(os.listdir(directory))
+    except OSError:
+        return None
+    for name in names:
+        if name in entries and (directory / name).is_file():
+            return directory / name
+    return None
+
 
 PROVIDER_COLORS = {
     "just": "\033[38;5;2m",  # green

@@ -7,7 +7,7 @@ import re
 import shlex
 from pathlib import Path
 
-from ..models import TaskItem
+from ..models import TaskItem, find_first_file
 
 MAKEFILE_NAMES = ("GNUmakefile", "makefile", "Makefile")
 
@@ -36,11 +36,7 @@ INCLUDE_RE = re.compile(r"^-?s?include\s+(.+)$")
 
 
 def find_makefile_in_dir(directory: Path) -> Path | None:
-    for name in MAKEFILE_NAMES:
-        candidate = directory / name
-        if candidate.is_file():
-            return candidate
-    return None
+    return find_first_file(directory, MAKEFILE_NAMES)
 
 
 def make_command_for(makefile: Path, target: str) -> tuple[str, list[str]]:
