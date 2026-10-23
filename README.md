@@ -73,6 +73,16 @@ default_mode = "split-bg"
 providers = ["just", "make", "task", "npm", "cargo"]
 ```
 
-## License
+## Author
 
-MIT
+[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-ff69b4?style=for-the-badge&logo=github)](https://github.com/sponsors/chmouel)
+
+### Chmouel Boudjnah
+
+- Fediverse - <[@chmouel@chmouel.com](https://fosstodon.org/@chmouel)>
+- Twitter - <[@chmouel](https://twitter.com/chmouel)>
+- Blog  - <[https://blog.chmouel.com](https://blog.chmouel.com)>
+
+## Licence
+
+[MIT](LICENSE).
