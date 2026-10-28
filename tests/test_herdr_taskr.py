@@ -21,7 +21,7 @@ from herdr_taskr.models import TaskItem, format_task_preview
 from herdr_taskr.picker import (
     format_candidate_rows,
     map_expect_key,
-    order_tasks_with_last,
+    order_tasks_by_mru,
     parse_fzf_output,
 )
 from herdr_taskr.providers import discover_tasks, find_provider_file
@@ -41,6 +41,7 @@ from herdr_taskr.runner import (
 )
 from herdr_taskr.state import (
     get_last_run,
+    get_recent_task_keys,
     record_last_run,
     resolve_default_mode,
     resolve_providers,
@@ -305,19 +306,22 @@ class PickerTests(unittest.TestCase):
         self.assertEqual(res.target, "test")
         self.assertEqual(res.mode, "tab")
 
-    def test_remember_last_orders_task_first_with_badge(self) -> None:
+    def test_remember_last_orders_tasks_by_mru(self) -> None:
         tasks = [
             TaskItem(provider="just", name="build", description="Build binary"),
             TaskItem(provider="make", name="test", description="Run tests"),
             TaskItem(provider="npm", name="lint", description="Run linter"),
         ]
-        ordered = order_tasks_with_last(tasks, "npm:lint")
-        self.assertEqual([t.key for t in ordered], ["npm:lint", "just:build", "make:test"])
+        ordered = order_tasks_by_mru(tasks, ["npm:lint", "just:build"])
+        self.assertEqual(
+            [t.key for t in ordered],
+            ["npm:lint", "just:build", "make:test"],
+        )
 
-        rows = format_candidate_rows(tasks, last_key="npm:lint")
+        rows = format_candidate_rows(tasks, recent_keys=["npm:lint", "just:build"])
         self.assertTrue(rows[0].endswith("\tnpm:lint"))
-        self.assertIn("[last]", rows[0])
-        self.assertNotIn("[last]", rows[1])
+        self.assertTrue(rows[1].endswith("\tjust:build"))
+        self.assertNotIn("[last]", "".join(rows))
 
 
 class ConfigAndStateTests(unittest.TestCase):
@@ -325,12 +329,15 @@ class ConfigAndStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg_dir = Path(tmp) / "cfg"
             cfg_dir.mkdir()
-            self.assertFalse(should_remember_last(env={}, config_dir=cfg_dir))
+            self.assertTrue(should_remember_last(env={}, config_dir=cfg_dir))
             self.assertEqual(
                 resolve_providers(env={}, config_dir=cfg_dir),
                 ["just", "make", "task", "npm", "cargo"],
             )
             self.assertEqual(resolve_default_mode(env={}, config_dir=cfg_dir), "split-bg")
+
+            (cfg_dir / "config.toml").write_text("remember_last = false\n", encoding="utf-8")
+            self.assertFalse(should_remember_last(env={}, config_dir=cfg_dir))
 
             (cfg_dir / "config.toml").write_text(
                 """\
@@ -398,6 +405,30 @@ enabled = false
             self.assertEqual(last.task_key, "make:test")
             self.assertEqual(last.target, "test")
             self.assertEqual(last.mode, "tab")
+            self.assertEqual(get_recent_task_keys(root, state_dir=state_dir), ["make:test"])
+
+            record_last_run(
+                root,
+                "make:build",
+                "tab",
+                command="make build",
+                state_dir=state_dir,
+            )
+            self.assertEqual(
+                get_recent_task_keys(root, state_dir=state_dir),
+                ["make:build", "make:test"],
+            )
+            record_last_run(
+                root,
+                "make:test",
+                "tab",
+                command="make test",
+                state_dir=state_dir,
+            )
+            self.assertEqual(
+                get_recent_task_keys(root, state_dir=state_dir),
+                ["make:test", "make:build"],
+            )
 
             with (
                 mock.patch.dict("os.environ", {"HERDR_PLUGIN_STATE_DIR": str(state_dir)}),

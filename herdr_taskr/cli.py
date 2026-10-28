@@ -23,7 +23,11 @@ from .runner import (
     run_hold,
     send_last_output_to_agent,
 )
-from .state import VALID_MODES, get_last_run, resolve_taskr_config
+from .state import (
+    VALID_MODES,
+    get_recent_task_keys,
+    resolve_taskr_config,
+)
 
 
 def self_bin_path() -> str:
@@ -82,17 +86,15 @@ def cmd_picker(args: argparse.Namespace) -> int:
         print(f"herdr-taskr: no project tasks found in {ctx.cwd}", file=sys.stderr)
         return 1
 
-    last_key: str | None = None
+    recent_keys: list[str] = []
     if cfg.remember_last:
-        last = get_last_run(disc.project_dir)
-        if last:
-            last_key = last.task_key
+        recent_keys = get_recent_task_keys(disc.project_dir)
 
     pick = run_picker(
         disc.tasks,
         disc.project_dir,
         self_bin_path(),
-        last_key=last_key,
+        recent_keys=recent_keys,
         default_mode=cfg.default_mode,
         explicit_file=explicit_file,
     )

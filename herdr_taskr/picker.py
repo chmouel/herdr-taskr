@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,7 +32,6 @@ FZF_STYLE = [
 
 MUTE = "\033[38;5;8m"
 KEY_TONE = "\033[38;5;7m"
-ACCENT_TONE = "\033[38;5;4m"
 TARGET_TONE = "\033[1;38;5;15m"
 RESET = "\033[0m"
 
@@ -50,39 +50,41 @@ class PickResult:
         return self.task_key
 
 
-def _matches_last(task: TaskItem, last_key: str | None) -> bool:
-    if not last_key:
+def _matches_key(task: TaskItem, task_key: str) -> bool:
+    if not task_key:
         return False
-    if ":" in last_key:
-        return task.key == last_key
-    return task.name == last_key
+    if ":" in task_key:
+        return task.key == task_key
+    return task.name == task_key
 
 
-def order_tasks_with_last(
+def order_tasks_by_mru(
     tasks: list[TaskItem],
-    last_key: str | None = None,
+    recent_keys: Sequence[str] | None = None,
 ) -> list[TaskItem]:
-    if not last_key:
+    keys = [key for key in (recent_keys or []) if key]
+    if not keys:
         return list(tasks)
-    matched = [t for t in tasks if _matches_last(t, last_key)]
-    if not matched:
-        return list(tasks)
-    first = matched[0]
-    rest = [t for t in tasks if t is not first]
-    return [first, *rest]
+    remaining = list(tasks)
+    ordered: list[TaskItem] = []
+    for key in keys:
+        for index, task in enumerate(remaining):
+            if _matches_key(task, key):
+                ordered.append(remaining.pop(index))
+                break
+    return [*ordered, *remaining]
 
 
 def format_candidate_rows(
     tasks: list[TaskItem],
-    last_key: str | None = None,
+    recent_keys: Sequence[str] | None = None,
 ) -> list[str]:
     if not tasks:
         return []
-    ordered = order_tasks_with_last(tasks, last_key)
+    ordered = order_tasks_by_mru(tasks, recent_keys)
     badge_width = max(len(t.badge) + 2 for t in ordered)
     name_width = min(max(len(t.name) for t in ordered), 30)
     rows: list[str] = []
-    marked_last = False
     for t in ordered:
         raw_badge = f"[{t.badge}]"
         badge_pad = " " * max(0, badge_width - len(raw_badge))
@@ -90,18 +92,12 @@ def format_candidate_rows(
         colored_badge = f"{pcolor}{raw_badge}{RESET}{badge_pad}"
         padded_name = t.name.ljust(name_width)
 
-        is_last = not marked_last and _matches_last(t, last_key)
-        if is_last:
-            marked_last = True
-        last_tag = f"  {ACCENT_TONE}[last]{RESET}" if is_last else ""
-
         if t.description:
             shown = (
-                f"{colored_badge}  {TARGET_TONE}{padded_name}{RESET}  "
-                f"{MUTE}{t.description}{RESET}{last_tag}"
+                f"{colored_badge}  {TARGET_TONE}{padded_name}{RESET}  {MUTE}{t.description}{RESET}"
             )
         else:
-            shown = f"{colored_badge}  {TARGET_TONE}{t.name}{RESET}{last_tag}"
+            shown = f"{colored_badge}  {TARGET_TONE}{t.name}{RESET}"
         rows.append(f"{shown}\t{t.key}")
     return rows
 
@@ -154,11 +150,11 @@ def run_picker(
     tasks: list[TaskItem],
     project_dir: Path,
     self_bin: str,
-    last_key: str | None = None,
+    recent_keys: Sequence[str] | None = None,
     default_mode: str = "split-bg",
     explicit_file: Path | None = None,
 ) -> PickResult:
-    rows = format_candidate_rows(tasks, last_key=last_key)
+    rows = format_candidate_rows(tasks, recent_keys=recent_keys)
     if not rows:
         return PickResult(outcome="failed", error="No project tasks found")
 

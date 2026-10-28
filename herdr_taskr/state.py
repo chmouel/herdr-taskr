@@ -17,11 +17,12 @@ PLUGIN_ID = "herdr-taskr"
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
 VALID_MODES = ("split-bg", "split-focus", "tab", "tab-focus", "background", "agent")
+RECENT_TASKS_LIMIT = 20
 
 
 @dataclass(frozen=True)
 class TaskrConfig:
-    remember_last: bool = False
+    remember_last: bool = True
     providers: list[str] = field(default_factory=lambda: list(DEFAULT_PROVIDERS))
     default_mode: str = "split-bg"
     npm_client: str = "auto"
@@ -86,7 +87,7 @@ def should_remember_last(
     env: Mapping[str, str] | None = None,
     config_dir: Path | None = None,
 ) -> bool:
-    """Resolve whether remember_last is enabled (default: False)."""
+    """Resolve whether remember_last is enabled (default: True)."""
     if cli_override is not None:
         return cli_override
 
@@ -105,7 +106,7 @@ def should_remember_last(
     if isinstance(picker_section, dict) and isinstance(picker_section.get("remember_last"), bool):
         return picker_section["remember_last"]
 
-    return False
+    return True
 
 
 def resolve_providers(
@@ -255,11 +256,11 @@ def _normalize_scope_key(scope: str | Path) -> str:
     return str(p)
 
 
-def get_last_run(
+def _read_history_entry(
     scope: str | Path,
     state_dir: Path | None = None,
     env: Mapping[str, str] | None = None,
-) -> LastRun | None:
+) -> dict | None:
     resolved = Path(scope).expanduser().resolve()
     dir_key = _normalize_scope_key(resolved)
     exact_key = str(resolved)
@@ -269,7 +270,19 @@ def get_last_run(
     try:
         data = json.loads(hfile.read_text(encoding="utf-8"))
         entry = data.get(dir_key) or data.get(exact_key)
-        if not isinstance(entry, dict):
+        return entry if isinstance(entry, dict) else None
+    except Exception:
+        return None
+
+
+def get_last_run(
+    scope: str | Path,
+    state_dir: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> LastRun | None:
+    try:
+        entry = _read_history_entry(scope, state_dir=state_dir, env=env)
+        if entry is None:
             return None
         task_key = str(entry.get("task_key") or "")
         target = str(entry.get("target") or "")
@@ -294,6 +307,28 @@ def get_last_run(
         )
     except Exception:
         return None
+
+
+def get_recent_task_keys(
+    scope: str | Path,
+    state_dir: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Return task keys from most to least recently run for this project."""
+    entry = _read_history_entry(scope, state_dir=state_dir, env=env)
+    if entry is None:
+        return []
+    raw = entry.get("recent")
+    if isinstance(raw, list):
+        keys: list[str] = []
+        for item in raw:
+            key = str(item)
+            if key and key not in keys:
+                keys.append(key)
+        if keys:
+            return keys
+    last = get_last_run(scope, state_dir=state_dir, env=env)
+    return [last.task_key] if last else []
 
 
 def record_last_run(
@@ -328,6 +363,11 @@ def record_last_run(
                 data = loaded
         except Exception:
             data = {}
+    previous = data.get(key)
+    recent: list[str] = []
+    if isinstance(previous, dict) and isinstance(previous.get("recent"), list):
+        recent = [str(item) for item in previous["recent"] if str(item)]
+    recent = [task_key, *(item for item in recent if item != task_key)]
     data[key] = {
         "task_key": task_key,
         "provider": provider,
@@ -336,6 +376,7 @@ def record_last_run(
         "mode": mode,
         "pane_id": pane_id,
         "log_file": log_file,
+        "recent": recent[:RECENT_TASKS_LIMIT],
         "updated_at": time.time(),
     }
     tmp_file = hfile.with_suffix(".json.tmp")

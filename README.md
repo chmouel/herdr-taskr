@@ -77,7 +77,7 @@ description = "Run project task in a new tab"
 All settings are optional. Put them in `~/.config/herdr/plugins/config/herdr-taskr/config.toml`:
 
 ```toml
-# Put the last task you ran at the top of the list
+# Put recently run tasks at the top of the list, most recent first (default: on)
 remember_last = true
 
 # What Enter does: "split-bg", "split-focus", "tab", "tab-focus", "background" or "agent"
