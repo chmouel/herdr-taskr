@@ -60,9 +60,9 @@ Bind the `herdr-taskr.rerun` action to a key the same way as above to run your l
 
 ## Command line flags
 
-`herdr-taskr open-picker` and `herdr-taskr rerun` accept `--split`, `--split-focus`, `--tab`, `--background` or `--agent` to choose where the task runs. With `open-picker` this changes what Enter does.
+`herdr-taskr open-picker` and `herdr-taskr rerun` accept `--split`, `--split-focus`, `--tab`, `--tab-focus`, `--background` or `--agent` to choose where the task runs. With `open-picker` this changes what Enter does.
 
-Add `--wait` to keep a split or tab open after the task ends. It shows the exit code and waits for a key: `r` runs the task again, `q` or `Esc` leaves you in the shell, and any other key closes the pane.
+Add `--wait` to keep a split or tab open after the task ends. It shows the exit code and waits for a key: `r` runs the task again, `s` or `Ctrl-C` leaves you in the shell, and any other key closes the pane.
 
 ```toml
 [[keys.command]]
@@ -80,7 +80,7 @@ All settings are optional. Put them in `~/.config/herdr/plugins/config/herdr-tas
 # Put the last task you ran at the top of the list
 remember_last = true
 
-# What Enter does: "split-bg", "split-focus", "tab", "background" or "agent"
+# What Enter does: "split-bg", "split-focus", "tab", "tab-focus", "background" or "agent"
 default_mode = "split-bg"
 
 # Which kinds of tasks to look for, in this order

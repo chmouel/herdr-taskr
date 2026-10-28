@@ -629,6 +629,27 @@ class RunnerTests(unittest.TestCase):
         )
 
     @mock.patch("herdr_taskr.runner.subprocess.run")
+    @mock.patch("herdr_taskr.runner.herdr_json")
+    def test_dispatch_tab_focus(self, mock_herdr: mock.Mock, _mock_run: mock.Mock) -> None:
+        mock_herdr.side_effect = [
+            {"result": {"root_pane": {"pane_id": "%78"}}},
+            {"result": {}},
+        ]
+        ctx = HerdrContext(pane_id="%1", workspace_id="%0", cwd="/tmp/proj")
+        task = TaskItem(
+            provider="npm",
+            provider_label="pnpm",
+            name="build",
+            command="pnpm run build",
+            argv=["pnpm", "run", "build"],
+            cwd=Path("/tmp/proj"),
+        )
+        rc = dispatch_task(task, "tab-focus", Path("/tmp/proj"), ctx, "/bin/herdr-taskr")
+        self.assertEqual(rc, 0)
+        self.assertIn("--focus", mock_herdr.call_args_list[0].args[0])
+        self.assertNotIn("--no-focus", mock_herdr.call_args_list[0].args[0])
+
+    @mock.patch("herdr_taskr.runner.subprocess.run")
     @mock.patch("herdr_taskr.runner.choose_split_direction", return_value="down")
     @mock.patch("herdr_taskr.runner.herdr_json")
     def test_dispatch_split_with_wait_runs_hold(
@@ -653,12 +674,12 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(sent[-2:], ["--", "just test"])
 
     @mock.patch("herdr_taskr.runner.subprocess.run")
-    def test_run_hold_logs_output_and_closes_unless_q(self, mock_run: mock.Mock) -> None:
+    def test_run_hold_logs_output_and_closes_unless_s(self, mock_run: mock.Mock) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "task.log"
             with (
                 mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}),
-                mock.patch("herdr_taskr.runner._read_key", side_effect=["q", "x"]),
+                mock.patch("herdr_taskr.runner._read_key", side_effect=["s", "x"]),
             ):
                 rc = run_hold("%9", "echo hello-hold; exit 3", log)
                 self.assertEqual(rc, 3)
@@ -679,7 +700,7 @@ class RunnerTests(unittest.TestCase):
             cmd = f"echo x >> {counter}; echo run-$(wc -l < {counter} | tr -d ' ')"
             with (
                 mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}),
-                mock.patch("herdr_taskr.runner._read_key", side_effect=["r", "q"]),
+                mock.patch("herdr_taskr.runner._read_key", side_effect=["r", "\x03"]),
             ):
                 run_hold("%9", cmd, log)
             text = log.read_text(encoding="utf-8")
@@ -690,6 +711,7 @@ class RunnerTests(unittest.TestCase):
     def test_mode_shortcut_flags(self) -> None:
         parser = build_parser()
         self.assertEqual(parser.parse_args(["rerun", "--tab"]).mode, "tab")
+        self.assertEqual(parser.parse_args(["rerun", "--tab-focus"]).mode, "tab-focus")
         args = parser.parse_args(["open-picker", "--split", "--wait"])
         self.assertEqual(args.default_mode, "split-bg")
         self.assertTrue(args.wait)

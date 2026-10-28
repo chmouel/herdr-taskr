@@ -310,7 +310,8 @@ def dispatch_task(
         )
         return 0
 
-    if mode == "tab":
+    if mode in ("tab", "tab-focus"):
+        focus_flag = "--focus" if mode == "tab-focus" else "--no-focus"
         tab_args = [
             "tab",
             "create",
@@ -318,7 +319,7 @@ def dispatch_task(
             task_cwd,
             "--label",
             label,
-            "--no-focus",
+            focus_flag,
         ]
         if ctx.workspace_id:
             tab_args.extend(["--workspace", ctx.workspace_id])
@@ -524,7 +525,7 @@ def run_background_job(
     return proc.returncode
 
 
-HOLD_KEEP_KEYS = ("q", "Q", "\x1b")
+HOLD_KEEP_KEYS = ("s", "S", "\x03")
 HOLD_RERUN_KEYS = ("r", "R")
 
 
@@ -579,7 +580,7 @@ def run_hold(pane_id: str, command: str, log_file: Path | None = None) -> int:
         mark = "\033[32m✓" if returncode == 0 else "\033[31m✗"
         print(
             f"\n{mark} exit {returncode}\033[0m  \033[2mpress r to run again, "
-            "q/esc to keep the shell, any other key to close\033[0m"
+            "s/ctrl-c to keep the shell, any other key to close\033[0m"
         )
         sys.stdout.flush()
         key = _read_key()

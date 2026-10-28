@@ -237,6 +237,7 @@ MODE_FLAGS = (
     ("--split", "split-bg", "run in a split next to you"),
     ("--split-focus", "split-focus", "run in a split and move there"),
     ("--tab", "tab", "run in a new tab"),
+    ("--tab-focus", "tab-focus", "run in a new tab and move there"),
     ("--background", "background", "run out of sight and notify"),
     ("--agent", "agent", "run out of sight and send output to an agent"),
 )

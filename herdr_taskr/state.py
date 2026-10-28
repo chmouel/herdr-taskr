@@ -16,7 +16,7 @@ PLUGIN_ID = "herdr-taskr"
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
-VALID_MODES = ("split-bg", "split-focus", "tab", "background", "agent")
+VALID_MODES = ("split-bg", "split-focus", "tab", "tab-focus", "background", "agent")
 
 
 @dataclass(frozen=True)
