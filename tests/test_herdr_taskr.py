@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import socket
 import tempfile
 import threading
@@ -15,6 +16,7 @@ from herdr_taskr.agent import (
     list_workspace_agents,
     send_text_to_agent,
 )
+from herdr_taskr.cli import build_parser
 from herdr_taskr.models import TaskItem, format_task_preview
 from herdr_taskr.picker import (
     format_candidate_rows,
@@ -35,6 +37,7 @@ from herdr_taskr.runner import (
     rerun_last_task,
     resolve_context,
     run_background_job,
+    run_hold,
 )
 from herdr_taskr.state import (
     get_last_run,
@@ -624,6 +627,58 @@ class RunnerTests(unittest.TestCase):
             mock_herdr.call_args_list[1].args[0],
             ["pane", "run", "%77", "pnpm run build"],
         )
+
+    @mock.patch("herdr_taskr.runner.subprocess.run")
+    @mock.patch("herdr_taskr.runner.choose_split_direction", return_value="down")
+    @mock.patch("herdr_taskr.runner.herdr_json")
+    def test_dispatch_split_with_wait_runs_hold(
+        self,
+        mock_herdr: mock.Mock,
+        _mock_dir: mock.Mock,
+        _mock_run: mock.Mock,
+    ) -> None:
+        mock_herdr.side_effect = [
+            {"result": {"pane": {"pane_id": "%42"}}},
+            {"result": {}},
+        ]
+        ctx = HerdrContext(pane_id="%1", workspace_id="%0", cwd="/tmp/proj")
+        task = TaskItem(provider="just", name="test", command="just test", cwd=Path("/tmp/proj"))
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}):
+                dispatch_task(
+                    task, "split-bg", Path("/tmp/proj"), ctx, "/bin/herdr-taskr", wait=True
+                )
+        sent = shlex.split(mock_herdr.call_args_list[1].args[0][3])
+        self.assertEqual(sent[1:5], ["/bin/herdr-taskr", "hold", "--pane", "%42"])
+        self.assertEqual(sent[-2:], ["--", "just test"])
+
+    @mock.patch("herdr_taskr.runner.subprocess.run")
+    def test_run_hold_logs_output_and_closes_unless_q(self, mock_run: mock.Mock) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "task.log"
+            with (
+                mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}),
+                mock.patch("herdr_taskr.runner._read_key", side_effect=["q", "x"]),
+            ):
+                rc = run_hold("%9", "echo hello-hold; exit 3", log)
+                self.assertEqual(rc, 3)
+                mock_run.assert_not_called()
+                text = log.read_text(encoding="utf-8")
+                self.assertIn("hello-hold", text)
+                self.assertIn("[exit code: 3]", text)
+                self.assertEqual((Path(tmp) / "herdr-taskr" / "last.log").resolve(), log)
+
+                run_hold("%9", "true")
+                self.assertEqual(mock_run.call_args.args[0][1:], ["pane", "close", "%9"])
+
+    def test_mode_shortcut_flags(self) -> None:
+        parser = build_parser()
+        self.assertEqual(parser.parse_args(["rerun", "--tab"]).mode, "tab")
+        args = parser.parse_args(["open-picker", "--split", "--wait"])
+        self.assertEqual(args.default_mode, "split-bg")
+        self.assertTrue(args.wait)
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            parser.parse_args(["rerun", "--tab", "--mode", "background"])
 
     def test_make_command_for_custom_filename(self) -> None:
         self.assertEqual(make_command_for(Path("/a/Makefile"), "build")[0], "make build")

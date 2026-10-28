@@ -26,6 +26,7 @@ class TaskrConfig:
     default_mode: str = "split-bg"
     npm_client: str = "auto"
     cargo_builtin_tasks: bool = True
+    wait_to_close: bool = False
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,7 @@ def resolve_taskr_config(
     remember_last: bool | None = None,
     providers: Sequence[str] | str | None = None,
     default_mode: str | None = None,
+    wait_to_close: bool | None = None,
     env: Mapping[str, str] | None = None,
     config_dir: Path | None = None,
 ) -> TaskrConfig:
@@ -225,6 +227,9 @@ def resolve_taskr_config(
     if cargo_builtin is None:
         cargo_builtin = True
 
+    if wait_to_close is None:
+        wait_to_close = bool(parse_bool_env(env.get("HERDR_TASKR_WAIT", "")))
+
     return TaskrConfig(
         remember_last=should_remember_last(
             cli_override=remember_last, env=env, config_dir=config_dir
@@ -233,6 +238,7 @@ def resolve_taskr_config(
         default_mode=resolve_default_mode(cli_mode=default_mode, env=env, config_dir=config_dir),
         npm_client=npm_client,
         cargo_builtin_tasks=cargo_builtin,
+        wait_to_close=wait_to_close,
     )
 
 

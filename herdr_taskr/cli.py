@@ -20,6 +20,7 @@ from .runner import (
     rerun_last_task,
     resolve_context,
     run_background_job,
+    run_hold,
     send_last_output_to_agent,
 )
 from .state import VALID_MODES, get_last_run, resolve_taskr_config
@@ -55,6 +56,7 @@ def cmd_open_picker(args: argparse.Namespace) -> int:
         providers=getattr(args, "provider", None),
         default_mode=getattr(args, "default_mode", None),
         explicit_file=_resolve_explicit_file(args),
+        wait=getattr(args, "wait", None),
     )
 
 
@@ -67,6 +69,7 @@ def cmd_picker(args: argparse.Namespace) -> int:
         remember_last=getattr(args, "remember_last", None),
         providers=getattr(args, "provider", None),
         default_mode=getattr(args, "default_mode", None),
+        wait_to_close=getattr(args, "wait", None),
     )
     disc = discover_tasks(
         ctx.cwd,
@@ -104,7 +107,9 @@ def cmd_picker(args: argparse.Namespace) -> int:
         print(f"herdr-taskr: unknown task {pick.task_key}", file=sys.stderr)
         return 1
 
-    return dispatch_task(matched, pick.mode, disc.project_dir, ctx, self_bin_path())
+    return dispatch_task(
+        matched, pick.mode, disc.project_dir, ctx, self_bin_path(), wait=cfg.wait_to_close
+    )
 
 
 def cmd_rerun(args: argparse.Namespace) -> int:
@@ -117,6 +122,7 @@ def cmd_rerun(args: argparse.Namespace) -> int:
         self_bin_path(),
         explicit_file=explicit_file,
         mode_override=getattr(args, "mode", None),
+        wait=getattr(args, "wait", None),
     )
 
 
@@ -179,6 +185,11 @@ def cmd_run_bg(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_hold(args: argparse.Namespace) -> int:
+    log_file = Path(args.log).expanduser() if args.log else None
+    return run_hold(args.pane, args.command, log_file)
+
+
 def cmd_send_to_agent(args: argparse.Namespace) -> int:
     ctx = resolve_context()
     if getattr(args, "cwd", None):
@@ -222,6 +233,31 @@ def _add_common_filter_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--makefile", help=argparse.SUPPRESS)
 
 
+MODE_FLAGS = (
+    ("--split", "split-bg", "run in a split next to you"),
+    ("--split-focus", "split-focus", "run in a split and move there"),
+    ("--tab", "tab", "run in a new tab"),
+    ("--background", "background", "run out of sight and notify"),
+    ("--agent", "agent", "run out of sight and send output to an agent"),
+)
+
+
+def _add_mode_args(parser: argparse.ArgumentParser, flag: str, dest: str, help_text: str) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(flag, dest=dest, choices=VALID_MODES, default=None, help=help_text)
+    for opt, mode, mode_help in MODE_FLAGS:
+        group.add_argument(opt, dest=dest, action="store_const", const=mode, help=mode_help)
+
+
+def _add_wait_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--wait",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="in split and tab modes, wait for a key after the task ends, then close the pane",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="herdr-taskr",
@@ -233,12 +269,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="pre-select the last executed task for this project",
     )
-    p.add_argument(
-        "--default-mode",
-        choices=VALID_MODES,
-        default=None,
-        help="override default execution mode for Enter",
-    )
+    _add_mode_args(p, "--default-mode", "default_mode", "override default execution mode for Enter")
+    _add_wait_arg(p)
     _add_common_filter_args(p)
     sub = p.add_subparsers(dest="cmd", metavar="command")
 
@@ -250,12 +282,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="pre-select the last executed task for this project",
     )
-    p_open.add_argument(
-        "--default-mode",
-        choices=VALID_MODES,
-        default=None,
-        help="override default execution mode for Enter",
+    _add_mode_args(
+        p_open, "--default-mode", "default_mode", "override default execution mode for Enter"
     )
+    _add_wait_arg(p_open)
     _add_common_filter_args(p_open)
     p_open.set_defaults(func=cmd_open_picker)
 
@@ -267,23 +297,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="pre-select the last executed task for this project",
     )
-    p_picker.add_argument(
-        "--default-mode",
-        choices=VALID_MODES,
-        default=None,
-        help="override default execution mode for Enter",
+    _add_mode_args(
+        p_picker, "--default-mode", "default_mode", "override default execution mode for Enter"
     )
+    _add_wait_arg(p_picker)
     _add_common_filter_args(p_picker)
     p_picker.set_defaults(func=cmd_picker)
 
     p_rerun = sub.add_parser("rerun", help="re-run the last executed task for this project")
     p_rerun.add_argument("--cwd", help="override starting directory")
     _add_common_filter_args(p_rerun)
-    p_rerun.add_argument(
-        "--mode",
-        choices=VALID_MODES,
-        help="override execution mode",
-    )
+    _add_mode_args(p_rerun, "--mode", "mode", "override execution mode")
+    _add_wait_arg(p_rerun)
     p_rerun.set_defaults(func=cmd_rerun)
 
     p_send = sub.add_parser(
@@ -324,6 +349,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_bg.add_argument("--agent-pane", default="", help="specific agent pane ID")
     p_bg.set_defaults(func=cmd_run_bg)
+
+    p_hold = sub.add_parser("hold", help="run a command, then wait for a key and close the pane")
+    p_hold.add_argument("--pane", required=True, help="Herdr pane ID to close")
+    p_hold.add_argument("--log", default="", help="also write the output to this file")
+    p_hold.add_argument("command", help="shell command to execute")
+    p_hold.set_defaults(func=cmd_hold)
 
     sub.add_parser("open-logs", help="open last background run log in a popup").set_defaults(
         func=cmd_open_logs

@@ -58,6 +58,20 @@ herdr-taskr pastes the output without pressing Enter for you, so you can add a l
 
 Bind the `herdr-taskr.rerun` action to a key the same way as above to run your last task again without opening the list.
 
+## Command line flags
+
+`herdr-taskr open-picker` and `herdr-taskr rerun` accept `--split`, `--split-focus`, `--tab`, `--background` or `--agent` to choose where the task runs. With `open-picker` this changes what Enter does.
+
+Add `--wait` to keep a split or tab open after the task ends. It shows the exit code and waits for a key: any key closes the pane, `q` or `Esc` leaves you in the shell.
+
+```toml
+[[keys.command]]
+key = "prefix+T"
+type = "shell"
+command = "herdr-taskr open-picker --tab --wait"
+description = "Run project task in a new tab"
+```
+
 ## Settings
 
 All settings are optional. Put them in `~/.config/herdr/plugins/config/herdr-taskr/config.toml`:

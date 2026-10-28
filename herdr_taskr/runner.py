@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import pty
 import shlex
 import subprocess
 import sys
+import termios
 import time
+import tty
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,11 +155,13 @@ def open_picker_popup(
     providers: Sequence[str] | str | None = None,
     default_mode: str | None = None,
     explicit_file: str | Path | None = None,
+    wait: bool | None = None,
 ) -> int:
     cfg = resolve_taskr_config(
         remember_last=remember_last,
         providers=providers,
         default_mode=default_mode,
+        wait_to_close=wait,
     )
     disc = discover_tasks(
         ctx.cwd,
@@ -202,6 +207,8 @@ def open_picker_popup(
         f"HERDR_TASKR_PROVIDERS={providers_csv}",
         "--env",
         f"HERDR_TASKR_DEFAULT_MODE={cfg.default_mode}",
+        "--env",
+        f"HERDR_TASKR_WAIT={'1' if cfg.wait_to_close else '0'}",
     ]
     if explicit_file:
         args.extend(["--env", f"HERDR_TASKR_FILE={Path(explicit_file).expanduser().resolve()}"])
@@ -215,12 +222,31 @@ def _log_path_for(project_dir: Path, task_key: str) -> Path:
     return cache_dir() / f"{project_name}-{safe_key}.log"
 
 
+def _update_last_log(log_file: Path) -> None:
+    last_link = cache_dir() / "last.log"
+    try:
+        if last_link.is_symlink() or last_link.exists():
+            last_link.unlink()
+        last_link.symlink_to(log_file)
+    except OSError:
+        pass
+
+
+def _pane_command(cmd_str: str, pane_id: str, log_path: Path, self_bin: str, wait: bool) -> str:
+    if not wait:
+        return cmd_str
+    return shlex.join(
+        [sys.executable, self_bin, "hold", "--pane", pane_id, "--log", str(log_path), "--", cmd_str]
+    )
+
+
 def dispatch_task(
     task: TaskItem,
     mode: str,
     project_dir: Path,
     ctx: HerdrContext,
     self_bin: str,
+    wait: bool = False,
 ) -> int:
     task_cwd = str(task.cwd or project_dir)
     cmd_str = task.command
@@ -274,7 +300,14 @@ def dispatch_task(
             capture_output=True,
             text=True,
         )
-        herdr_json(["pane", "run", new_pane_id, cmd_str])
+        herdr_json(
+            [
+                "pane",
+                "run",
+                new_pane_id,
+                _pane_command(cmd_str, new_pane_id, log_path, self_bin, wait),
+            ]
+        )
         return 0
 
     if mode == "tab":
@@ -309,7 +342,14 @@ def dispatch_task(
             capture_output=True,
             text=True,
         )
-        herdr_json(["pane", "run", root_pane_id, cmd_str])
+        herdr_json(
+            [
+                "pane",
+                "run",
+                root_pane_id,
+                _pane_command(cmd_str, root_pane_id, log_path, self_bin, wait),
+            ]
+        )
         return 0
 
     if mode in ("background", "agent"):
@@ -396,9 +436,7 @@ def run_background_job(
     agent_pane_id: str = "",
 ) -> int:
     project_name = project_dir.name or str(project_dir)
-    cdir = cache_dir()
     log_file = _log_path_for(project_dir, task_key)
-    last_link = cdir / "last.log"
 
     display_cmd = command or label
     _set_workspace_metadata(workspace_id, f"⚙ {label}")
@@ -420,12 +458,7 @@ def run_background_job(
         )
         fh.write(f"\n[exit code: {proc.returncode}]\n")
 
-    try:
-        if last_link.is_symlink() or last_link.exists():
-            last_link.unlink()
-        last_link.symlink_to(log_file)
-    except OSError:
-        pass
+    _update_last_log(log_file)
 
     elapsed = time.monotonic() - start
     _set_workspace_metadata(workspace_id, None)
@@ -489,6 +522,63 @@ def run_background_job(
             sound="request",
         )
     return proc.returncode
+
+
+HOLD_KEEP_KEYS = ("q", "Q", "\x1b")
+
+
+def _read_key() -> str:
+    fd = sys.stdin.fileno()
+    if not os.isatty(fd):
+        try:
+            return input()
+        except EOFError:
+            return ""
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        # Ignore keys typed while the task was running.
+        termios.tcflush(fd, termios.TCIFLUSH)
+        key = os.read(fd, 1).decode(errors="replace")
+        # Drop the rest of escape sequences such as arrow keys.
+        termios.tcflush(fd, termios.TCIFLUSH)
+        return key
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def run_hold(pane_id: str, command: str, log_file: Path | None = None) -> int:
+    """Run command in this pane, then wait for a key and close the pane."""
+    log_fh = open(log_file, "wb") if log_file else None
+
+    def master_read(fd: int) -> bytes:
+        data = os.read(fd, 1024)
+        if log_fh and data:
+            log_fh.write(data.replace(b"\r\n", b"\n"))
+        return data
+
+    try:
+        if log_fh:
+            log_fh.write(f"$ {command}  (in {os.getcwd()})\n\n".encode())
+        status = pty.spawn(["/bin/sh", "-c", command], master_read)
+        returncode = os.waitstatus_to_exitcode(status)
+        if log_fh:
+            log_fh.write(f"\n[exit code: {returncode}]\n".encode())
+    finally:
+        if log_fh:
+            log_fh.close()
+    if log_file:
+        _update_last_log(log_file)
+
+    mark = "\033[32m✓" if returncode == 0 else "\033[31m✗"
+    print(
+        f"\n{mark} exit {returncode}\033[0m  \033[2mpress any key to close, q/esc to keep the shell\033[0m"
+    )
+    sys.stdout.flush()
+    if _read_key() in HOLD_KEEP_KEYS:
+        return returncode
+    subprocess.run([herdr_bin(), "pane", "close", pane_id], capture_output=True, text=True)
+    return returncode
 
 
 def _read_pane_recent_text(pane_id: str) -> str | None:
@@ -617,8 +707,9 @@ def rerun_last_task(
     self_bin: str,
     explicit_file: Path | None = None,
     mode_override: str | None = None,
+    wait: bool | None = None,
 ) -> int:
-    cfg = resolve_taskr_config()
+    cfg = resolve_taskr_config(wait_to_close=wait)
     disc = discover_tasks(
         ctx.cwd,
         providers=cfg.providers,
@@ -637,7 +728,7 @@ def rerun_last_task(
             f"No previous task recorded for {disc.project_dir.name}",
             sound="none",
         )
-        return open_picker_popup(ctx, explicit_file=explicit_file)
+        return open_picker_popup(ctx, explicit_file=explicit_file, wait=wait)
 
     matched = find_task_by_key_or_name(disc.tasks, last.task_key)
     if not matched and last.command:
@@ -649,7 +740,7 @@ def rerun_last_task(
             cwd=disc.project_dir,
         )
     if not matched:
-        return open_picker_popup(ctx, explicit_file=explicit_file)
+        return open_picker_popup(ctx, explicit_file=explicit_file, wait=wait)
 
     return dispatch_task(
         matched,
@@ -657,6 +748,7 @@ def rerun_last_task(
         disc.project_dir,
         ctx,
         self_bin,
+        wait=cfg.wait_to_close,
     )
 
 
