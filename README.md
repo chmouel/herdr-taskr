@@ -62,7 +62,7 @@ Bind the `herdr-taskr.rerun` action to a key the same way as above to run your l
 
 `herdr-taskr open-picker` and `herdr-taskr rerun` accept `--split`, `--split-focus`, `--tab`, `--background` or `--agent` to choose where the task runs. With `open-picker` this changes what Enter does.
 
-Add `--wait` to keep a split or tab open after the task ends. It shows the exit code and waits for a key: any key closes the pane, `q` or `Esc` leaves you in the shell.
+Add `--wait` to keep a split or tab open after the task ends. It shows the exit code and waits for a key: `r` runs the task again, `q` or `Esc` leaves you in the shell, and any other key closes the pane.
 
 ```toml
 [[keys.command]]

@@ -525,6 +525,7 @@ def run_background_job(
 
 
 HOLD_KEEP_KEYS = ("q", "Q", "\x1b")
+HOLD_RERUN_KEYS = ("r", "R")
 
 
 def _read_key() -> str:
@@ -547,8 +548,7 @@ def _read_key() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-def run_hold(pane_id: str, command: str, log_file: Path | None = None) -> int:
-    """Run command in this pane, then wait for a key and close the pane."""
+def _hold_run_once(command: str, log_file: Path | None) -> int:
     log_fh = open(log_file, "wb") if log_file else None
 
     def master_read(fd: int) -> bytes:
@@ -569,16 +569,28 @@ def run_hold(pane_id: str, command: str, log_file: Path | None = None) -> int:
             log_fh.close()
     if log_file:
         _update_last_log(log_file)
-
-    mark = "\033[32m✓" if returncode == 0 else "\033[31m✗"
-    print(
-        f"\n{mark} exit {returncode}\033[0m  \033[2mpress any key to close, q/esc to keep the shell\033[0m"
-    )
-    sys.stdout.flush()
-    if _read_key() in HOLD_KEEP_KEYS:
-        return returncode
-    subprocess.run([herdr_bin(), "pane", "close", pane_id], capture_output=True, text=True)
     return returncode
+
+
+def run_hold(pane_id: str, command: str, log_file: Path | None = None) -> int:
+    """Run command in this pane, then wait for a key to rerun, keep the shell or close the pane."""
+    while True:
+        returncode = _hold_run_once(command, log_file)
+        mark = "\033[32m✓" if returncode == 0 else "\033[31m✗"
+        print(
+            f"\n{mark} exit {returncode}\033[0m  \033[2mpress r to run again, "
+            "q/esc to keep the shell, any other key to close\033[0m"
+        )
+        sys.stdout.flush()
+        key = _read_key()
+        if key in HOLD_RERUN_KEYS:
+            print(f"\n\033[2m── running again: {command}\033[0m\n")
+            sys.stdout.flush()
+            continue
+        if key in HOLD_KEEP_KEYS:
+            return returncode
+        subprocess.run([herdr_bin(), "pane", "close", pane_id], capture_output=True, text=True)
+        return returncode
 
 
 def _read_pane_recent_text(pane_id: str) -> str | None:

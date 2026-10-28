@@ -254,7 +254,7 @@ def _add_wait_arg(parser: argparse.ArgumentParser) -> None:
         "--wait",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="in split and tab modes, wait for a key after the task ends, then close the pane",
+        help="in split and tab modes, wait for a key after the task ends to run it again or close the pane",
     )
 
 
@@ -350,7 +350,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_bg.add_argument("--agent-pane", default="", help="specific agent pane ID")
     p_bg.set_defaults(func=cmd_run_bg)
 
-    p_hold = sub.add_parser("hold", help="run a command, then wait for a key and close the pane")
+    p_hold = sub.add_parser(
+        "hold", help="run a command, then wait for a key to run it again or close the pane"
+    )
     p_hold.add_argument("--pane", required=True, help="Herdr pane ID to close")
     p_hold.add_argument("--log", default="", help="also write the output to this file")
     p_hold.add_argument("command", help="shell command to execute")

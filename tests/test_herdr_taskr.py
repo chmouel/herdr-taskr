@@ -671,6 +671,22 @@ class RunnerTests(unittest.TestCase):
                 run_hold("%9", "true")
                 self.assertEqual(mock_run.call_args.args[0][1:], ["pane", "close", "%9"])
 
+    @mock.patch("herdr_taskr.runner.subprocess.run")
+    def test_run_hold_r_reruns_and_log_keeps_latest_run(self, mock_run: mock.Mock) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "task.log"
+            counter = Path(tmp) / "n"
+            cmd = f"echo x >> {counter}; echo run-$(wc -l < {counter} | tr -d ' ')"
+            with (
+                mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}),
+                mock.patch("herdr_taskr.runner._read_key", side_effect=["r", "q"]),
+            ):
+                run_hold("%9", cmd, log)
+            text = log.read_text(encoding="utf-8")
+            self.assertIn("run-2", text)
+            self.assertNotIn("run-1", text)
+            mock_run.assert_not_called()
+
     def test_mode_shortcut_flags(self) -> None:
         parser = build_parser()
         self.assertEqual(parser.parse_args(["rerun", "--tab"]).mode, "tab")
